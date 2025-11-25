@@ -13,100 +13,120 @@
     <!-- 引入 Axios 用于网络请求 -->
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
 </head>
-<body class="bg-gray-50 text-gray-800">
+<body class="bg-[#f5f5f7] text-[#1d1d1f] font-sans antialiased">
     <div id="app" class="min-h-screen flex flex-col md:flex-row">
         
         <!-- 侧边栏设置 -->
-        <aside class="w-full md:w-80 bg-white shadow-md p-6 flex-shrink-0">
-            <h1 class="text-2xl font-bold mb-6 text-blue-600">📈 行情看板</h1>
+        <aside class="w-full md:w-80 bg-white/80 backdrop-blur-xl border-r border-gray-200 p-8 flex-shrink-0">
+            <h1 class="text-2xl font-semibold mb-8 text-[#1d1d1f] tracking-tight">Market Helper</h1>
             
-            <div class="space-y-4">
+            <div class="space-y-6">
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">API Token</label>
-                    <input type="password" v-model="apiToken" placeholder="请输入您的 API Token" 
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <p class="text-xs text-gray-500 mt-1">数据来源: infoway.io</p>
+                    <label class="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">API Token</label>
+                    <input type="password" v-model="apiToken" placeholder="请输入 API Token" 
+                        class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">股票代码</label>
+                    <label class="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">股票代码</label>
                     <input type="text" v-model="stockCode" placeholder="例如: 600519" 
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm">
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">市场区域</label>
-                    <select v-model="region" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="cn">CN - A股</option>
-                        <option value="hk">HK - 港股</option>
-                        <option value="us">US - 美股</option>
-                    </select>
+                    <label class="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">市场区域</label>
+                    <div class="relative">
+                        <select v-model="region" class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm appearance-none">
+                            <option value="cn">CN - A股</option>
+                            <option value="hk">HK - 港股</option>
+                            <option value="us">US - 美股</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">K线周期</label>
-                    <select v-model="selectedTimeframe" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option v-for="(value, key) in timeframeMap" :key="key" :value="key">{{ key }}</option>
-                    </select>
+                    <label class="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">K线周期</label>
+                    <div class="relative">
+                        <select v-model="selectedTimeframe" class="w-full px-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm appearance-none">
+                            <option v-for="(value, key) in timeframeMap" :key="key" :value="key">{{ key }}</option>
+                        </select>
+                        <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500">
+                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
                 </div>
 
                 <button @click="fetchData" :disabled="loading"
-                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200 disabled:opacity-50 flex justify-center items-center">
-                    <span v-if="loading">加载中...</span>
+                    class="w-full bg-[#0071e3] text-white py-2.5 px-4 rounded-full font-medium hover:bg-[#0077ed] transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm hover:shadow-md active:scale-[0.98] flex justify-center items-center mt-4">
+                    <span v-if="loading" class="flex items-center">
+                        <svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        加载中...
+                    </span>
                     <span v-else>获取行情</span>
                 </button>
 
                 <!-- AI 分析入口预留 -->
-                <div class="pt-4 border-t border-gray-200 mt-4">
-                    <h3 class="text-sm font-semibold text-gray-600 mb-2">🤖 AI 助手 (示例)</h3>
+                <div class="pt-6 border-t border-gray-200 mt-6">
+                    <h3 class="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wide">AI 助手</h3>
                     <textarea v-model="aiPrompt" placeholder="输入问题，例如：分析这只股票的趋势..." 
-                        class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm h-20 mb-2"></textarea>
-                    <button @click="mockAiAnalysis" class="w-full bg-purple-600 text-white py-1.5 px-4 rounded-md text-sm hover:bg-purple-700">
-                        发送给 AI
+                        class="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm h-24 mb-3 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all resize-none shadow-sm"></textarea>
+                    <button @click="mockAiAnalysis" class="w-full bg-white text-purple-600 border border-purple-200 py-2 px-4 rounded-full text-sm font-medium hover:bg-purple-50 hover:border-purple-300 transition-all shadow-sm">
+                        智能分析
                     </button>
-                    <p v-if="aiResponse" class="mt-2 text-sm text-gray-600 bg-gray-100 p-2 rounded">
+                    <div v-if="aiResponse" class="mt-4 text-sm text-gray-600 bg-white border border-gray-100 p-4 rounded-xl shadow-sm leading-relaxed">
                         {{ aiResponse }}
-                    </p>
+                    </div>
                 </div>
             </div>
         </aside>
 
         <!-- 主内容区 -->
-        <main class="flex-1 p-6 overflow-y-auto">
+        <main class="flex-1 p-8 overflow-y-auto">
             <!-- 错误提示 -->
-            <div v-if="error" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+            <div v-if="error" class="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl mb-8 text-sm flex items-center shadow-sm" role="alert">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 <p>{{ error }}</p>
             </div>
 
             <!-- 实时行情卡片 -->
-            <div v-if="quote" class="bg-white rounded-lg shadow p-6 mb-6">
-                <h2 class="text-xl font-semibold mb-4 border-b pb-2">实时行情: {{ currentFormattedCode }}</h2>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div class="p-3 bg-gray-50 rounded">
-                        <p class="text-sm text-gray-500">当前价格</p>
-                        <p class="text-2xl font-bold text-gray-900">{{ quote.p }}</p>
+            <div v-if="quote" class="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 p-8 mb-8 transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+                <div class="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
+                    <h2 class="text-2xl font-semibold text-[#1d1d1f] tracking-tight">{{ currentFormattedCode }}</h2>
+                    <span class="px-3 py-1 bg-gray-100 text-gray-600 text-xs rounded-full font-medium">实时</span>
+                </div>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-8">
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">当前价格</p>
+                        <p class="text-3xl font-semibold text-[#1d1d1f] tracking-tight">{{ quote.p }}</p>
                     </div>
-                    <div class="p-3 bg-gray-50 rounded">
-                        <p class="text-sm text-gray-500">成交量</p>
-                        <p class="text-lg font-medium text-gray-900">{{ quote.v }}</p>
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">成交量</p>
+                        <p class="text-xl font-medium text-gray-900">{{ quote.v }}</p>
                     </div>
-                    <div class="p-3 bg-gray-50 rounded">
-                        <p class="text-sm text-gray-500">成交额</p>
-                        <p class="text-lg font-medium text-gray-900">{{ quote.vw }}</p>
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">成交额</p>
+                        <p class="text-xl font-medium text-gray-900">{{ quote.vw }}</p>
                     </div>
-                    <div class="p-3 bg-gray-50 rounded">
-                        <p class="text-sm text-gray-500">更新时间</p>
-                        <p class="text-sm font-medium text-gray-900">{{ formatTime(quote.t) }}</p>
+                    <div>
+                        <p class="text-xs text-gray-500 uppercase tracking-wide mb-1">更新时间</p>
+                        <p class="text-sm font-medium text-gray-900 mt-1.5">{{ formatTime(quote.t) }}</p>
                     </div>
                 </div>
             </div>
 
             <!-- K线图容器 -->
-            <div class="bg-white rounded-lg shadow p-6 min-h-[600px]">
-                <h2 class="text-xl font-semibold mb-4">K线走势 ({{ selectedTimeframe }})</h2>
+            <div class="bg-white rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-gray-100 p-8 min-h-[600px] transition-all hover:shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+                <div class="flex items-center justify-between mb-6">
+                    <h2 class="text-xl font-semibold text-[#1d1d1f] tracking-tight">图表分析</h2>
+                    <span class="text-sm text-gray-500 font-medium">{{ selectedTimeframe }}</span>
+                </div>
                 <div id="kline-chart" class="w-full h-[600px]">
-                    <div v-if="!klineData && !loading" class="flex items-center justify-center h-full text-gray-400">
-                        请点击左侧“获取行情”按钮
+                    <div v-if="!klineData && !loading" class="flex flex-col items-center justify-center h-full text-gray-400">
+                        <svg class="w-16 h-16 mb-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                        <p class="text-sm font-medium">请输入股票代码并点击“获取行情”开始</p>
                     </div>
                 </div>
             </div>
