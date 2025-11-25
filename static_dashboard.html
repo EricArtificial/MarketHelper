@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时行情看板</title>
+    <!-- 引入 Tailwind CSS 用于样式 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Vue 3 -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <!-- 引入 Plotly.js 用于绘图 -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <!-- 引入 Axios 用于网络请求 -->
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <div id="app" class="min-h-screen flex flex-col md:flex-row">
+        
+        <!-- 侧边栏设置 -->
+        <aside class="w-full md:w-80 bg-white shadow-md p-6 flex-shrink-0">
+            <h1 class="text-2xl font-bold mb-6 text-blue-600">📈 行情看板</h1>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">API Token</label>
+                    <input type="password" v-model="apiToken" placeholder="请输入您的 API Token" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <p class="text-xs text-gray-500 mt-1">数据来源: infoway.io</p>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">股票代码</label>
+                    <input type="text" v-model="stockCode" placeholder="例如: 600519" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">市场区域</label>
+                    <select v-model="region" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="cn">CN - A股</option>
+                        <option value="hk">HK - 港股</option>
+                        <option value="us">US - 美股</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">K线周期</label>
+                    <select v-model="selectedTimeframe" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option v-for="(value, key) in timeframeMap" :key="key" :value="key">{{ key }}</option>
+                    </select>
+                </div>
+
+                <button @click="fetchData" :disabled="loading"
+                    class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 transition duration-200 disabled:opacity-50 flex justify-center items-center">
+                    <span v-if="loading">加载中...</span>
+                    <span v-else>获取行情</span>
+                </button>
+
+                <!-- AI 分析入口预留 -->
+                <div class="pt-4 border-t border-gray-200 mt-4">
+                    <h3 class="text-sm font-semibold text-gray-600 mb-2">🤖 AI 助手 (示例)</h3>
+                    <textarea v-model="aiPrompt" placeholder="输入问题，例如：分析这只股票的趋势..." 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm h-20 mb-2"></textarea>
+                    <button @click="mockAiAnalysis" class="w-full bg-purple-600 text-white py-1.5 px-4 rounded-md text-sm hover:bg-purple-700">
+                        发送给 AI
+                    </button>
+                    <p v-if="aiResponse" class="mt-2 text-sm text-gray-600 bg-gray-100 p-2 rounded">
+                        {{ aiResponse }}
+                    </p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="flex-1 p-6 overflow-y-auto">
+            <!-- 错误提示 -->
+            <div v-if="error" class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-6" role="alert">
+                <p>{{ error }}</p>
+            </div>
+
+            <!-- 实时行情卡片 -->
+            <div v-if="quote" class="bg-white rounded-lg shadow p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2">实时行情: {{ currentFormattedCode }}</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="p-3 bg-gray-50 rounded">
+                        <p class="text-sm text-gray-500">当前价格</p>
+                        <p class="text-2xl font-bold text-gray-900">{{ quote.p }}</p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded">
+                        <p class="text-sm text-gray-500">成交量</p>
+                        <p class="text-lg font-medium text-gray-900">{{ quote.v }}</p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded">
+                        <p class="text-sm text-gray-500">成交额</p>
+                        <p class="text-lg font-medium text-gray-900">{{ quote.vw }}</p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded">
+                        <p class="text-sm text-gray-500">更新时间</p>
+                        <p class="text-sm font-medium text-gray-900">{{ formatTime(quote.t) }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- K线图容器 -->
+            <div class="bg-white rounded-lg shadow p-6 min-h-[600px]">
+                <h2 class="text-xl font-semibold mb-4">K线走势 ({{ selectedTimeframe }})</h2>
+                <div id="kline-chart" class="w-full h-[600px]">
+                    <div v-if="!klineData && !loading" class="flex items-center justify-center h-full text-gray-400">
+                        请点击左侧“获取行情”按钮
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref } = Vue;
+
+        createApp({
+            setup() {
+                const apiToken = ref('28222a4f7c7c4ae6bfe07d8bb75cfc82-infoway'); // 默认值方便测试
+                const stockCode = ref('600519');
+                const region = ref('cn');
+                
+                const timeframeMap = {
+                    "1分钟": 1,
+                    "5分钟": 2,
+                    "15分钟": 3,
+                    "30分钟": 4,
+                    "1小时": 5,
+                    "日K": 8,
+                    "周K": 9,
+                    "月K": 10
+                };
+                const selectedTimeframe = ref("日K");
+
+                const loading = ref(false);
+                const error = ref('');
+                const quote = ref(null);
+                const klineData = ref(null);
+                const currentFormattedCode = ref('');
+                
+                // AI 相关
+                const aiPrompt = ref('');
+                const aiResponse = ref('');
+
+                // 使用 cors.sh 代理解决跨域问题 (仅用于开发/演示，生产环境建议自建后端代理)
+                // 备选代理: https://corsproxy.io/?
+                const PROXY_URL = "https://corsproxy.io/?";
+                const BASE_URL = "https://data.infoway.io/stock";
+
+                // 格式化股票代码 (逻辑复刻自 Python)
+                const formatCode = (code, reg) => {
+                    code = code.trim().toUpperCase();
+                    if (reg === "cn") {
+                        if (code.endsWith(".SH") || code.endsWith(".SZ") || code.endsWith(".SS")) {
+                            return code.replace(".SS", ".SH");
+                        }
+                        if (code.startsWith("6")) return `${code}.SH`;
+                        if (code.startsWith("0") || code.startsWith("3")) return `${code}.SZ`;
+                        if (code.startsWith("8") || code.startsWith("4")) return `${code}.BJ`;
+                        return `${code}.SH`;
+                    } else if (reg === "hk") {
+                        return code.endsWith(".HK") ? code : `${code}.HK`;
+                    } else if (reg === "us") {
+                        return code.endsWith(".US") ? code : `${code}.US`;
+                    }
+                    return code;
+                };
+
+                // 时间格式化
+                const formatTime = (ts) => {
+                    if (!ts) return 'N/A';
+                    // API 返回的是毫秒时间戳 (UTC)，这里简单转为本地时间字符串
+                    // 如果需要严格的 CST 时间，可以手动计算偏移
+                    return new Date(ts).toLocaleString('zh-CN', { hour12: false });
+                };
+
+                // 计算移动平均线
+                const calculateMA = (closes, window) => {
+                    let ma = [];
+                    for (let i = 0; i < closes.length; i++) {
+                        if (i < window - 1) {
+                            ma.push(null);
+                            continue;
+                        }
+                        let sum = 0;
+                        for (let j = 0; j < window; j++) {
+                            sum += closes[i - j];
+                        }
+                        ma.push(sum / window);
+                    }
+                    return ma;
+                };
+
+                // 带重试机制的请求函数
+                const fetchWithRetry = async (url, headers, maxRetries = 10) => {
+                    for (let i = 0; i < maxRetries; i++) {
+                        try {
+                            const res = await axios.get(url, { headers });
+                            // 只有当 HTTP 200 且 API 返回 ret=200 时才算成功
+                            if (res.data && res.data.ret === 200) {
+                                return res;
+                            }
+                            // 如果 API 返回错误码，视为失败并重试
+                            throw new Error(res.data?.msg || "API Error");
+                        } catch (err) {
+                            console.warn(`Attempt ${i + 1} failed: ${err.message}`);
+                            if (i === maxRetries - 1) throw err; // 最后一次尝试失败，抛出异常
+                            // 等待 50ms 后重试
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                        }
+                    }
+                };
+
+                const fetchData = async () => {
+                    if (!apiToken.value) {
+                        error.value = "请输入 API Token";
+                        return;
+                    }
+                    
+                    loading.value = true;
+                    error.value = '';
+                    quote.value = null;
+                    
+                    const formattedCode = formatCode(stockCode.value, region.value);
+                    currentFormattedCode.value = formattedCode;
+
+                    try {
+                        const headers = { "apikey": apiToken.value };
+                        
+                        // 1. 获取实时报价
+                        // 拼接代理地址
+                        const quoteUrl = `${PROXY_URL}${encodeURIComponent(`${BASE_URL}/batch_trade/${formattedCode}`)}`;
+                        // 使用重试机制
+                        const quoteRes = await fetchWithRetry(quoteUrl, headers);
+                        
+                        if (quoteRes.data && quoteRes.data.ret === 200 && quoteRes.data.data.length > 0) {
+                            quote.value = quoteRes.data.data[0];
+                        } else {
+                            throw new Error(quoteRes.data.msg || "获取行情失败");
+                        }
+
+                        // 2. 获取 K 线数据
+                        const kType = timeframeMap[selectedTimeframe.value];
+                        const klineUrl = `${PROXY_URL}${encodeURIComponent(`${BASE_URL}/batch_kline/${kType}/500/${formattedCode}`)}`;
+                        // 使用重试机制
+                        const klineRes = await fetchWithRetry(klineUrl, headers);
+                        
+                        if (klineRes.data && klineRes.data.ret === 200 && klineRes.data.data.length > 0) {
+                            const candles = klineRes.data.data[0].respList;
+                            renderChart(candles);
+                            klineData.value = candles;
+                        } else {
+                            // 清空图表
+                            Plotly.purge('kline-chart');
+                            error.value = "未获取到 K 线数据";
+                        }
+
+                    } catch (err) {
+                        console.error(err);
+                        // 十轮 request 全部都 fail 则输出 Request failed 提示
+                        error.value = "Request failed";
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const renderChart = (candles) => {
+                    if (!candles || candles.length === 0) return;
+
+                    // 准备 Plotly 数据
+                    const times = candles.map(c => new Date(c.t * 1000)); // 秒转毫秒
+                    // 确保数值类型，防止字符串拼接导致计算错误
+                    const opens = candles.map(c => parseFloat(c.o));
+                    const highs = candles.map(c => parseFloat(c.h));
+                    const lows = candles.map(c => parseFloat(c.l));
+                    const closes = candles.map(c => parseFloat(c.c));
+                    const volumes = candles.map(c => parseFloat(c.v));
+
+                    // 计算均线
+                    const ma5 = calculateMA(closes, 5);
+                    const ma10 = calculateMA(closes, 10);
+                    const ma20 = calculateMA(closes, 20);
+
+                    // 成交量颜色
+                    const volColors = opens.map((o, i) => closes[i] >= o ? '#ef4444' : '#22c55e');
+
+                    // Trace 1: Candlestick
+                    const traceCandle = {
+                        x: times,
+                        close: closes,
+                        decreasing: {line: {color: '#22c55e'}}, // 跌：绿色
+                        increasing: {line: {color: '#ef4444'}}, // 涨：红色
+                        high: highs,
+                        low: lows,
+                        open: opens,
+                        type: 'candlestick',
+                        xaxis: 'x',
+                        yaxis: 'y',
+                        name: 'K线'
+                    };
+
+                    // Trace 2-4: MA Lines
+                    const traceMA5 = { x: times, y: ma5, type: 'scatter', mode: 'lines', line: { color: 'orange', width: 1 }, name: 'MA5', yaxis: 'y' };
+                    const traceMA10 = { x: times, y: ma10, type: 'scatter', mode: 'lines', line: { color: 'blue', width: 1 }, name: 'MA10', yaxis: 'y' };
+                    const traceMA20 = { x: times, y: ma20, type: 'scatter', mode: 'lines', line: { color: 'purple', width: 1 }, name: 'MA20', yaxis: 'y' };
+
+                    // Trace 5: Volume
+                    const traceVol = {
+                        x: times,
+                        y: volumes,
+                        type: 'bar',
+                        marker: { color: volColors },
+                        xaxis: 'x',
+                        yaxis: 'y2',
+                        name: '成交量'
+                    };
+
+                    const layout = {
+                        dragmode: 'zoom',
+                        showlegend: true,
+                        legend: {
+                            orientation: 'h',
+                            yanchor: 'bottom',
+                            y: 1.02,
+                            xanchor: 'right',
+                            x: 1
+                        },
+                        grid: {
+                            rows: 2,
+                            columns: 1,
+                            pattern: 'independent',
+                            roworder: 'top to bottom'
+                        },
+                        xaxis: {
+                            rangeslider: { visible: false },
+                            type: 'date',
+                            anchor: 'y'
+                        },
+                        yaxis: {
+                            domain: [0.3, 1],
+                            autorange: true,
+                            type: 'linear'
+                        },
+                        yaxis2: {
+                            domain: [0, 0.2],
+                            autorange: true,
+                            type: 'linear'
+                        },
+                        margin: {
+                            l: 50, r: 50, b: 40, t: 30
+                        },
+                        height: 600,
+                        modebar: {
+                            orientation: 'v'
+                        }
+                    };
+                    
+                    // 针对 A 股简单的非交易时间段隐藏 (Rangebreaks)
+                    if (region.value === 'cn') {
+                        const rangebreaks = [];
+                        const tf = selectedTimeframe.value;
+                        
+                        // 周末
+                        rangebreaks.push({ bounds: ["sat", "mon"] });
+
+                        // 分时图隐藏午休和过夜
+                        if (tf.includes("分钟") || tf.includes("小时")) {
+                            rangebreaks.push({ bounds: [11.5, 13], pattern: "hour" }); // 午休
+                            rangebreaks.push({ bounds: [15, 9.5], pattern: "hour" });  // 过夜
+                        }
+                        
+                        layout.xaxis.rangebreaks = rangebreaks;
+                    }
+
+                    const config = {
+                        responsive: true,
+                        displayModeBar: true,
+                        displaylogo: false,
+                        modeBarButtonsToRemove: ['select2d', 'lasso2d', 'autoScale2d', 'hoverClosestCartesian', 'hoverCompareCartesian']
+                    };
+
+                    Plotly.newPlot('kline-chart', [traceCandle, traceMA5, traceMA10, traceMA20, traceVol], layout, config);
+                };
+
+                // 模拟 AI 分析功能
+                const mockAiAnalysis = async () => {
+                    if (!aiPrompt.value) return;
+                    aiResponse.value = "正在思考...";
+                    
+                    // 这里是接入真实 AI 接口的地方
+                    // 例如：调用 OpenAI API
+                    /*
+                    const aiRes = await axios.post('https://api.openai.com/v1/chat/completions', {
+                        model: "gpt-3.5-turbo",
+                        messages: [{role: "user", content: aiPrompt.value}]
+                    }, { headers: { Authorization: `Bearer ${YOUR_OPENAI_KEY}` } });
+                    */
+
+                    // 模拟延迟回复
+                    setTimeout(() => {
+                        aiResponse.value = `[模拟回复] 我收到了你的问题：“${aiPrompt.value}”。\n\n基于当前行情 (${currentFormattedCode.value})，价格为 ${quote.value?.p || '未知'}。这是一个静态页面演示，请在代码中配置真实的 AI API Key 来获取智能分析。`;
+                    }, 1000);
+                };
+
+                return {
+                    apiToken, stockCode, region, loading, error, quote, klineData,
+                    fetchData, aiPrompt, aiResponse, mockAiAnalysis, formatTime, currentFormattedCode,
+                    timeframeMap, selectedTimeframe
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
