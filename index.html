@@ -133,6 +133,45 @@
                         <p class="text-sm font-medium text-gray-900 mt-1.5">{{ quote ? formatTime(quote.t) : '-' }}</p>
                     </div>
                 </div>
+
+                <!-- 盘口数据 -->
+                <div class="mt-8 pt-6 border-t border-gray-100">
+                    <h3 class="text-xs font-medium text-gray-500 mb-4 uppercase tracking-wide">盘口深度 (买卖五档)</h3>
+                    <div class="grid grid-cols-2 gap-8">
+                        <!-- 买盘 (Bid) -->
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-400 mb-2">
+                                <span>买入 (Bid)</span>
+                                <span>量</span>
+                            </div>
+                            <div class="space-y-1">
+                                <template v-if="depth && depth.b && depth.b[0] && depth.b[0].length > 0">
+                                    <div v-for="(p, i) in depth.b[0]" :key="'b'+i" class="flex justify-between text-sm">
+                                        <span class="text-red-500 font-medium">{{ p }}</span>
+                                        <span class="text-gray-600">{{ depth.b[1][i] }}</span>
+                                    </div>
+                                </template>
+                                <div v-else class="text-sm text-gray-400">-</div>
+                            </div>
+                        </div>
+                        <!-- 卖盘 (Ask) -->
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-400 mb-2">
+                                <span>卖出 (Ask)</span>
+                                <span>量</span>
+                            </div>
+                            <div class="space-y-1">
+                                <template v-if="depth && depth.a && depth.a[0] && depth.a[0].length > 0">
+                                    <div v-for="(p, i) in depth.a[0]" :key="'a'+i" class="flex justify-between text-sm">
+                                        <span class="text-green-500 font-medium">{{ p }}</span>
+                                        <span class="text-gray-600">{{ depth.a[1][i] }}</span>
+                                    </div>
+                                </template>
+                                <div v-else class="text-sm text-gray-400">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- K线图容器 -->
@@ -220,6 +259,7 @@
                 const loading = ref(false);
                 const error = ref('');
                 const quote = ref(null);
+                const depth = ref(null);
                 const klineData = ref(null);
                 const currentFormattedCode = ref('');
                 
@@ -332,7 +372,21 @@
                             throw new Error(quoteRes.data.msg || "获取行情失败");
                         }
 
-                        // 2. 获取 K 线数据
+                        // 2. 获取盘口数据 (独立 try-catch，避免影响主流程)
+                        try {
+                            const depthUrl = `${PROXY_URL}${encodeURIComponent(`${BASE_URL}/batch_depth/${formattedCode}`)}`;
+                            const depthRes = await fetchWithRetry(depthUrl, headers);
+                            if (depthRes.data && depthRes.data.ret === 200 && depthRes.data.data.length > 0) {
+                                depth.value = depthRes.data.data[0];
+                            } else {
+                                depth.value = null;
+                            }
+                        } catch (e) {
+                            console.warn("Depth fetch failed", e);
+                            depth.value = null;
+                        }
+
+                        // 3. 获取 K 线数据
                         const kType = timeframeMap[selectedTimeframe.value];
                         const klineUrl = `${PROXY_URL}${encodeURIComponent(`${BASE_URL}/batch_kline/${kType}/500/${formattedCode}`)}`;
                         // 使用重试机制
@@ -490,6 +544,34 @@
                     };
                     
                     // 移除旧的 rangebreaks 逻辑，因为 type: 'category' 已经天然解决了这个问题
+
+                    // 自动缩放逻辑
+                    let zoomCount = 0;
+                    const tf = selectedTimeframe.value;
+                    
+                    // 基础每日分钟数
+                    let dailyMins = 240; // CN: 4小时
+                    if (region.value === 'hk') dailyMins = 330; // HK: 5.5小时
+                    if (region.value === 'us') dailyMins = 390; // US: 6.5小时
+
+                    if (tf === "1分钟") {
+                        zoomCount = dailyMins; // 1天
+                    } else if (tf === "5分钟") {
+                        zoomCount = Math.ceil(dailyMins / 5) * 5; // 1周 (5天)
+                    } else if (tf === "15分钟") {
+                        zoomCount = Math.ceil(dailyMins / 15) * 22; // 1月 (~22交易日)
+                    } else if (tf === "30分钟") {
+                        zoomCount = Math.ceil(dailyMins / 30) * 44; // 2月 (~44交易日)
+                    } else if (tf === "1小时") {
+                        zoomCount = Math.ceil(dailyMins / 60) * 130; // 半年 (~130交易日)
+                    } else if (tf === "日K") {
+                        zoomCount = 250; // 1年 (~250交易日)
+                    }
+
+                    if (zoomCount > 0 && times.length > zoomCount) {
+                        // category 轴使用索引进行 range 设置
+                        layout.xaxis.range = [times.length - zoomCount, times.length - 1];
+                    }
 
                     const config = {
                         responsive: true,
@@ -701,7 +783,7 @@
                 });
 
                 return {
-                    apiToken, stockCode, region, loading, error, quote, klineData,
+                    apiToken, stockCode, region, loading, error, quote, depth, klineData,
                     fetchData, aiApiKey, aiPrompt, aiResponse, renderedAiResponse, performAiAnalysis, formatTime, currentFormattedCode,
                     timeframeMap, selectedTimeframe,
                     autoRefresh, refreshInterval, toggleAutoRefresh,
