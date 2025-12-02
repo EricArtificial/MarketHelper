@@ -26,5 +26,5 @@ streamlit run dashboard.py
 
 ## 注意事项
 
--   请确保网络能够访问 `api.itick.org`。
+-   请确保网络能够访问 `api.infoway.org`。
 -   如果 API 返回 401 错误，请检查 Token 是否正确。
